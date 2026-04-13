@@ -7,8 +7,8 @@ const taskSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ["todo", "doing", "done"],
-        default: "todo"
+        enum: ["backlog", "todo", "doing", "review", "done"],
+        default: "backlog",
     },
     priority: {
         type: String,
@@ -17,7 +17,15 @@ const taskSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
-    }
+    },
+    type: {
+        type: String,
+        enum: ["daily", "kanban", "calendar", "milestone", "goal"],
+        default: "kanban"
+    },   // 🆕 "kanban" | "daily"
+    dueDate: Date,       // 🆕
+    completed: { type: Boolean, default: false },
+    skill: String
 });
 
 export default mongoose.model("Task", taskSchema);
