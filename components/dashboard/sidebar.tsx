@@ -10,12 +10,14 @@ import {
   BarChart3,
   Settings,
   HelpCircle,
+  Sparkles,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
+  { icon: Sparkles, label: "AI Mentor", href: "/ai" },
   { icon: Kanban, label: "Kanban Goals", href: "/kanban" },
   { icon: CheckSquare, label: "Today's Tasks", href: "/tasks" },
   { icon: TrendingUp, label: "Progress Graph", href: "/progress" },
@@ -48,7 +50,8 @@ export function DashboardSidebar() {
         <nav className="flex-1 space-y-1 px-3 py-4">
           {navItems.map((item) => {
             const Icon = item.icon
-            const isActive = pathname === item.href
+            const isActive =
+              pathname === item.href || pathname.startsWith(item.href + "/")
             return (
               <Link
                 key={item.label}

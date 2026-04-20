@@ -723,8 +723,27 @@ export default function CalendarPage() {
 
                   const dayTasks = getTasksForDay(day)
 
+                  const today = new Date()
+
+                  const isToday =
+                    day === today.getDate() &&
+                    month === today.getMonth() &&
+                    year === today.getFullYear()
+
+                  const isSelected = selectedDay === day
+
                   return (
-                    <div key={index} onClick={() => handleDayClick(day)} className="min-h-24 border rounded-lg p-2 hover:bg-accent/40 cursor-pointer">
+                    <div
+                      key={index}
+                      onClick={() => handleDayClick(day)}
+                      className={`min-h-24 border rounded-lg p-2 cursor-pointer transition
+  ${isSelected
+                          ? "bg-primary text-white"
+                          : isToday
+                            ? "bg-primary/10 border-primary"
+                            : "hover:bg-accent/40"
+                        }`}
+                    >
                       <div className="text-sm font-medium">{day}</div>
                       <div className="space-y-1 mt-1">
                         {dayTasks.slice(0, 2).map((task, i) => (
@@ -810,7 +829,7 @@ export default function CalendarPage() {
               No tasks for this day
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 max-h-75 overflow-y-auto pr-2">
               {selectedTasks.map((task) => (
                 <div
                   key={task._id}

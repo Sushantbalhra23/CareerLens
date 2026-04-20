@@ -856,16 +856,8 @@ import { Plus, Edit2, Trash2, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { Task } from "@/components/dashboard/types"
 
-export interface Task {
-  _id: string
-  title: string
-  completed: boolean
-  type?: string
-  time?: string
-  category?: string
-  priority?: "low" | "medium" | "high"
-}
 
 interface TaskListProps {
   tasks: Task[]
@@ -879,7 +871,14 @@ export function TaskList({ tasks, onToggle, onDelete, onAdd, onEdit }: TaskListP
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState<string>("")
 
-  const localTasks = tasks.filter(t => t.type === "daily")
+  const today = new Date().toDateString()
+
+  const localTasks = tasks.filter(
+    task =>
+      task.type === "daily" &&
+      task.dueDate &&
+      new Date(task.dueDate).toDateString() === today
+  )
   const completedCount = localTasks.filter(t => t.completed).length
 
   const startEdit = (task: Task) => {
@@ -909,7 +908,7 @@ export function TaskList({ tasks, onToggle, onDelete, onAdd, onEdit }: TaskListP
         </Button>
       </CardHeader>
 
-      <CardContent className="px-4 pb-4 h-[400px] overflow-y-auto scroll-smooth">
+      <CardContent className="px-4 pb-4 h-100 overflow-y-auto scroll-smooth">
         <div className="space-y-2">
           {localTasks.map(task => (
             <div key={task._id}>

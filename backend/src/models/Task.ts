@@ -18,6 +18,10 @@ const taskSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    category: {
+        type: String,
+        default: "manual"
+    },
     type: {
         type: String,
         enum: ["daily", "kanban", "calendar", "milestone", "goal"],

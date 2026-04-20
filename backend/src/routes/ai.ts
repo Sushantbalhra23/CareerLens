@@ -1,89 +1,8 @@
-// import express from "express";
-// import OpenAI from "openai";
-
-// const router = express.Router();
-
-// const openai = new OpenAI({
-//     apiKey: process.env.GROQ_API_KEY,
-//     baseURL: "https://api.groq.com/openai/v1",
-// });
-
-// router.post("/chat", async (req, res) => {
-//     try {
-//         const { message } = req.body;
-
-//         const completion = await openai.chat.completions.create({
-//             model: "llama-3.3-70b-versatile",
-//             messages: [
-//                 {
-//                     role: "system",
-//                     content: `
-// You are an AI career planner.
-
-// User will talk in natural language.
-
-// Extract:
-// - skills
-// - goal
-// - duration
-
-// Return ONLY JSON:
-
-// {
-//   "kanban": [{ "title": "", "status": "todo" }],
-//   "dailyTasks": [{ "title": "", "date": "YYYY-MM-DD" }],
-//   "calendar": [{ "title": "", "date": "YYYY-MM-DD" }],
-//   "roadmapText": ""
-// }
-
-// Rules:
-// - max 6 kanban tasks
-// - max 5 daily tasks
-// - clear roadmap
-// `
-//                 },
-//                 {
-//                     role: "user",
-//                     content: message
-//                 }
-//             ],
-//         });
-
-//         let content = completion.choices[0].message.content || "{}";
-
-//         // remove ```json ``` wrappers
-//         content = content.replace(/```json|```/g, "").trim();
-
-//         let data;
-
-//         try {
-//             data = JSON.parse(content);
-//         } catch (err) {
-//             console.log("RAW AI RESPONSE ❌", content);
-
-//             data = {
-//                 kanban: [],
-//                 dailyTasks: [],
-//                 calendar: [],
-//                 roadmapText: content,
-//             };
-//         }
-
-//         res.json(data);
-
-//     } catch (err) {
-//         console.error(err);
-//         res.status(500).json({ error: "AI failed" });
-//     }
-// });
-
-// export default router;
-
-
 import express from "express";
 import OpenAI from "openai";
 import AIResponse from "../models/AIResponse"; // 👈 ADD THIS
 import Task from "../models/Task"; // 👈 ADD THIS
+import User from "../models/Users";
 
 const router = express.Router();
 
@@ -94,43 +13,155 @@ const openai = new OpenAI({
 
 router.post("/chat", async (req, res) => {
     try {
-        const { message, history = [] } = req.body;
+        const { message, history = [], userId } = req.body;
+        const isRoadmapRequest =
+            /roadmap|plan|schedule|study plan|learning path|job ready|learning roadmap/i.test(
+                message
+            );
+
+        let userProfile = "";
+
+        if (userId) {
+
+            const user = await User.findById(userId);
+
+            if (user) {
+                userProfile = `
+        USER PROFILE:
+
+        Skill level: ${user.skillLevel}
+        Target role: ${user.targetRole}
+        Goal: ${user.goal}
+        Preferred study time: ${user.preferredStudyTime?.start || "not set"} 
+        to ${user.preferredStudyTime?.end || "not set"}
+        `;
+            }
+        }
+
+        const systemPrompt = `
+You are CareerLens AI, a structured career mentor assistant.
+
+If a user requests a roadmap or study plan:
+
+FIRST check whether the user has provided:
+
+- skill level
+- target role
+- roadmap duration
+- working days per week
+- study hours per day
+- roadmap start date (YYYY-MM-DD)
+
+If ANY of these are missing:
+
+Return ONLY:
+
+{
+  "reply": "Ask the missing questions clearly in numbered format including roadmap start date in YYYY-MM-DD format"
+}
+
+DO NOT generate roadmap yet.
+
+ONLY AFTER user provides ALL required inputs:
+
+Return roadmap in this structure:
+
+{
+  "kanban": [
+    { "title": "Phase 1: Foundations", "status": "todo" },
+    { "title": "Phase 2: Core JavaScript", "status": "todo" },
+    { "title": "Phase 3: React + APIs", "status": "todo" },
+    { "title": "Phase 4: Production Projects", "status": "todo" },
+    { "title": "Phase 5: Interview Preparation", "status": "todo" }
+  ],
+
+  "dailyTasks": [
+    {
+      "title": "task name",
+      "date": "YYYY-MM-DD"
+    }
+  ],
+
+  "calendar": [
+    {
+      "title": "task name",
+      "date": "YYYY-MM-DD"
+    }
+  ],
+
+  "roadmapText": "Explain roadmap phases clearly"
+}
+
+IMPORTANT:
+
+You MUST generate dailyTasks covering the FULL roadmap duration.
+
+Calculate:
+
+duration_in_weeks × study_days_per_week = total_number_of_tasks
+
+Example:
+
+3 months ≈ 12 weeks
+12 weeks × 5 days/week = 60 tasks
+
+Generate EXACTLY total_number_of_tasks dailyTasks.
+
+Do NOT generate partial schedules.
+Do NOT generate sample schedules.
+Generate the COMPLETE learning schedule from the provided start date until the roadmap ends.
+
+RULES:
+
+Kanban = roadmap phases ONLY (not individual learning topics)
+
+Daily tasks = specific learning topics such as:
+variables, arrays, functions, DOM manipulation, React hooks, APIs, projects, deployment, interview prep
+
+Calendar = same tasks mapped to exact ISO dates
+
+Always schedule tasks starting from the roadmap start date provided by the user
+
+Schedule tasks ONLY on the number of study days per week specified by the user
+
+Ensure the calendar spans the entire roadmap duration provided by the user
+
+Ensure the number of generated dailyTasks matches the calculated total_number_of_tasks exactly
+
+Never generate vague tasks like:
+
+"learn javascript basics"
+
+Instead generate precise tasks like:
+
+"learn javascript variables"
+"practice array problems"
+"build todo app with React hooks"
+"fetch data using REST API"
+"deploy project on Vercel"
+`;
 
         const completion = await openai.chat.completions.create({
             model: "llama-3.3-70b-versatile",
             messages: [
                 {
                     role: "system",
-                    content: `
-                        You are an AI placement preparation planner.
+                    content:
+                        systemPrompt +
+                        userProfile +
+                        (isRoadmapRequest
+                            ? `
 
-                        Return ONLY valid JSON.
+                            IMPORTANT:
+                            The user is requesting a roadmap.
 
-                        Format:
+                            If required details are missing, you MUST ask questions first.
 
-                        {
-                        "kanban": [
-                            { "task": string, "status": "todo" }
-                        ],
-                        "dailyTasks": [
-                            { "day": number, "tasks": string[] }
-                        ],
-                        "calendar": [
-                            { "date": string, "task": string }
-                        ],
-                        "roadmapText": string
-                        }
-
-                        Rules:
-                        - Do NOT ask questions
-                        - Do NOT explain outside JSON
-                        - Do NOT leave arrays empty
-                        - Always include at least:
-                        3 kanban tasks
-                        5 dailyTasks entries
-                        3 calendar milestones
-                        `
+                            Do NOT generate roadmap yet.
+                            `
+                            : "")
                 },
+                ...history,
                 {
                     role: "user",
                     content: message
@@ -151,31 +182,50 @@ router.post("/chat", async (req, res) => {
             console.log("RAW AI RESPONSE ❌", content);
 
             data = {
-                kanban: [],
-                dailyTasks: [],
-                calendar: [],
-                roadmapText: content,
+                reply: content
             };
         }
 
-        // 💥 SAVE TO DB
-        const saved = await AIResponse.create({
-            userInput: message,
-            ...data,
-        });
-        if (!data.kanban?.length) {
+        // 🚨 FORCE QUESTION-FIRST IF ROADMAP REQUEST BUT AI DIDN'T ASK
+        if (isRoadmapRequest && !data.kanban && !data.reply) {
             return res.json({
-                reply: data.roadmapText || "Tell me more about your goal"
+                reply:
+                    "Before I create your roadmap, tell me:\n" +
+                    "1. Your current level?\n" +
+                    "2. Target role?\n" +
+                    "3. Study hours per day?\n" +
+                    "4. Working days per week?\n" +
+                    "5. Duration (e.g., 3 months)?\n" +
+                    "6. Start date (YYYY-MM-DD)?"
             });
         }
+
+        // 💥 SAVE TO DB
+
+        if (data.reply) {
+
+            await AIResponse.create({
+                userInput: message,
+                roadmapText: data.reply
+            });
+
+            return res.json({
+                reply: data.reply
+            });
+        }
+
+        // 🧹 Remove previous AI roadmap tasks
+        await Task.deleteMany({
+            category: "AI roadmap"
+        });
 
         // 💥 CREATE KANBAN TASKS
         if (data.kanban?.length) {
             const tasksToInsert = data.kanban.map((t: any) => ({
-                title: t.task,
+                title: t.title,
                 status: t.status || "todo",
                 priority: "medium",
-                category: "AI Generated",
+                category: "AI roadmap",
                 type: "kanban",
             }));
 
@@ -183,49 +233,44 @@ router.post("/chat", async (req, res) => {
         }
 
         // 💥 CREATE DAILY TASKS
-        const today = new Date()
+        // const today = new Date()
 
-        const dailyToInsert = data.dailyTasks.flatMap((t: any) =>
-            (t.tasks || []).map((task: string) => {
-                const dueDate = new Date(today)
-                dueDate.setDate(today.getDate() + (t.day - 1))
+        if (data.dailyTasks?.length) {
 
-                return {
-                    title: `Day ${t.day}: ${task}`,
-                    status: "todo",
-                    priority: "medium",
-                    category: "AI Daily",
-                    type: "daily",
-                    dueDate
-                }
-            })
-        )
+            const dailyToInsert = data.dailyTasks.map((task: any) => ({
+                title: task.title,
+                status: "todo",
+                priority: "medium",
+                category: "AI roadmap",
+                type: "daily",
+                dueDate: new Date(task.date)
+            }));
 
-        await Task.insertMany(dailyToInsert)
+            await Task.insertMany(dailyToInsert);
+        }
+
 
         // 💥 CREATE CALENDAR TASKS
 
         if (data.calendar?.length) {
-            const today = new Date()
 
-            const calendarToInsert = data.calendar.map((t: any, index: number) => {
-                const date = new Date(today)
-                date.setDate(today.getDate() + index)
+            const calendarToInsert = data.calendar.map((event: any) => ({
+                title: event.title,
+                status: "todo",
+                priority: "medium",
+                category: "AI roadmap",
+                type: "calendar",
+                dueDate: event.date ? new Date(event.date) : new Date()
+            }));
 
-                return {
-                    title: t.task,
-                    status: "todo",
-                    priority: "medium",
-                    category: "AI Calendar",
-                    type: "calendar",
-                    dueDate: date,
-                }
-            })
-
-            await Task.insertMany(calendarToInsert)
+            await Task.insertMany(calendarToInsert);
         }
 
-        console.log("AI SAVED ✅", saved._id);
+        await AIResponse.create({
+            userInput: message,
+            ...data,
+        });
+        console.log("AI SAVED ✅");
 
         res.json(data);
 
